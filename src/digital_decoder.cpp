@@ -251,12 +251,8 @@ void DigitalDecoder::handle_payload(uint64_t payload) {
     uint64_t typ = (payload & 0x000000FF0000) >> 16;
 
     const bool valid_sensor = is_payload_valid(payload);
-    // The second CRC check with explicit polynomial is only needed if the
-    // auto-detected polynomial differs (Honeywell uses 0x18005).
-    const bool needs_keypad_keyfob_check = (sof == 0x8);
-    const bool valid_2gig_crc = valid_sensor || (!needs_keypad_keyfob_check || is_payload_valid(payload, 0x18050));
-    const bool valid_keypad = valid_2gig_crc && (typ & 0x01);
-    const bool valid_keyfob = valid_2gig_crc && (typ & 0x02);
+    const bool valid_keypad = is_payload_valid(payload, 0x18050) && (typ & 0x01);
+    const bool valid_keyfob = is_payload_valid(payload, 0x18050) && (typ & 0x02);
 
     if (valid_sensor || valid_keypad || valid_keyfob) {
         spdlog::info("Valid Payload: {:X} (Serial {}/{:X}, Status {:X})", payload, ser, ser, typ);
