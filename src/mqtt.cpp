@@ -38,6 +38,7 @@ Mqtt::Mqtt(const char* id, const char* host, const int port, const char* usernam
 }
 
 Mqtt::~Mqtt() {
+    disconnect();
     loop_stop();
     mosqpp::lib_cleanup();
 }
