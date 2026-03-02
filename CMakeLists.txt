@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(345toMqtt)
+project(2GIG-345-Decoder)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -18,13 +18,12 @@ include_directories(${YAML_CPP_INCLUDE_DIRS})
 
 add_executable(${PROJECT_NAME}
 	src/main.cpp
-        src/analog_decoder.cpp
-        src/analog_decoder.h
+	src/analog_decoder.cpp
+	src/analog_decoder.h
 	src/digital_decoder.cpp
 	src/digital_decoder.h
 	src/mqtt.cpp
 	src/mqtt.h
-	src/mqtt_values.h
-	)
+)
 
 target_link_libraries(${PROJECT_NAME} PkgConfig::Mosquitto PkgConfig::RTL-SDR ${YAML_CPP_LIBRARIES} spdlog::spdlog)
