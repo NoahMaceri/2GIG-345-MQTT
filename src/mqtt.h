@@ -1,28 +1,29 @@
-#ifndef __MQTT_H__
-#define __MQTT_H__
+#ifndef MQTT_H
+#define MQTT_H
 
-#include <stdint.h>
+#include <string>
+#include <string_view>
 #include <mosquittopp.h>
 
 class Mqtt : public mosqpp::mosquittopp
 {
     private:
-        const char      *host;
-        const char      *id;
+        std::string     host;
+        std::string     id;
         int             port;
         int             keepalive;
-        const char      *will_message;
-        const char      *will_topic;
+        std::string     will_message;
+        std::string     will_topic;
 
-        void on_connect(int rc);
-        void on_disconnect(int rc);
-        void on_publish(int mid);
+        void on_connect(int rc) override;
+        void on_disconnect(int rc) override;
+        void on_publish(int mid) override;
 
     public:
         Mqtt(const char *id, const char *host, int port, const char *username, const char *password, const char *will_topic, const char *will_message);
-        ~Mqtt();
-        bool send(const char * _topic, const char * _message, int qos=1, bool retain=true);
-        bool set_will(const char * _topic, const char * _message);
+        ~Mqtt() override;
+        [[nodiscard]] bool send(std::string_view topic, std::string_view message, int qos=1, bool retain=true);
+        [[nodiscard]] bool set_will(std::string_view topic, std::string_view message);
 };
 
-#endif
+#endif // MQTT_H

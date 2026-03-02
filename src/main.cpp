@@ -1,214 +1,179 @@
-#include "digitalDecoder.h"
-#include "analogDecoder.h"
+#include "digital_decoder.h"
+#include "analog_decoder.h"
 #include "mqtt.h"
-#include "mqtt_values.h"
 
 #include <yaml-cpp/yaml.h>
 #include <rtl-sdr.h>
+#include <spdlog/spdlog.h>
 
-#include <iostream>
 #include <cmath>
-#include <csignal>
-#include <unistd.h>
-#include <sys/time.h>
-#include <cstdlib>
 #include <string>
+#include <string_view>
+#include <array>
+#include <cstring>
+#include <csignal>
+#include <atomic>
 
-// TODO: MQTT Will doesn't seem to be working with HA as expected
+static std::atomic<bool> running{true};
+static rtlsdr_dev_t* global_dev = nullptr;
 
-float magLut[0x10000];
-
-// void alarmHandler(int signal)
-// {
-//     dDecoder.setRxGood(false);
-// }
-
-void usage(const char *argv0)
-{
-    std::cout << "Usage: " << std::endl
-        << argv0 << " [-d <device-id>] [-f <frequency in Hz]" << std::endl;
+static void signal_handler(int /*signum*/) {
+    running = false;
+    if (global_dev) {
+        rtlsdr_cancel_async(global_dev);
+    }
 }
 
-int main(int argc, char ** argv)
-{
-    YAML::Node config = YAML::LoadFile("config.yaml");
+void usage(const char* argv0) {
+    spdlog::info("Usage: {} [-c <config.yaml>]", argv0);
+}
 
-    const char *mqttHost = config["mqtt"]["host"].as<std::string>().c_str();
-    int mqttPort = config["mqtt"]["port"].as<int>();
-    const char *mqttUsername = config["mqtt"]["username"].as<std::string>().c_str();
-    const char *mqttPassword = config["mqtt"]["password"].as<std::string>().c_str();
-    
-    Mqtt mqtt = Mqtt("sensors345", mqttHost, mqttPort, mqttUsername, mqttPassword, "security/sensors345/rx_status", "FAILED");
-    DigitalDecoder dDecoder = DigitalDecoder(mqtt);
-    AnalogDecoder aDecoder;
-    
-    int devId = 0;
-    int freq = 345000000;
-    signed char c;
-    while ((c = getopt(argc, argv, "hd:f:")) != -1)
-    {
-        switch(c)
-        {
-            case 'h':
-            {
-                usage(argv[0]);
-                exit(0);
-            }
-            case 'd':
-            {
-                devId = atoi(optarg);
-                break;
-            }
-            case 'f':
-            {
-                freq = atoi(optarg);
-                break;
-            }
-            default: // including '?' unknown character
-            {
-                std::cerr << "Unknown flag '" << c << std::endl;
-                usage(argv[0]);
-                exit(1);
-            }
+int main(int argc, char** argv) {
+    std::string config_path = "config.yaml";
+
+    // First pass: extract -c flag before loading config
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg = argv[i];
+        if (arg == "-c" && i + 1 < argc) {
+            config_path = argv[++i];
+        }
+        else if (arg == "-h" || arg == "--help") {
+            usage(argv[0]);
+            return 0;
+        }
+        else {
+            spdlog::warn("Unknown argument: {}", arg);
+            usage(argv[0]);
+            return 1;
         }
     }
-    
-    //
-    // Open the device
-    //
-    if(rtlsdr_get_device_count() < 1)
-    {
-        std::cout << "Could not find any devices" << std::endl;
+
+    YAML::Node config;
+    try {
+        config = YAML::LoadFile(config_path);
+    }
+    catch (const YAML::Exception& e) {
+        spdlog::error("Failed to load {}: {}", config_path, e.what());
+        return 1;
+    }
+
+    // Configure log level
+    auto log_level = config["log_level"].as<std::string>("info");
+    spdlog::set_level(spdlog::level::from_str(log_level));
+
+    // MQTT config
+    auto mqtt_host = config["mqtt"]["host"].as<std::string>("127.0.0.1");
+    int mqtt_port = config["mqtt"]["port"].as<int>(1883);
+    auto mqtt_username = config["mqtt"]["username"].as<std::string>("");
+    auto mqtt_password = config["mqtt"]["password"].as<std::string>("");
+    auto topic_prefix = config["mqtt"]["topic_prefix"].as<std::string>("security/sensors345");
+
+    // RTL-SDR config
+    int dev_id = config["rtlsdr"]["device_id"].as<int>(0);
+    int freq = config["rtlsdr"]["frequency"].as<int>(345000000);
+    int gain = config["rtlsdr"]["gain"].as<int>(490);
+    int sample_rate = config["rtlsdr"]["sample_rate"].as<int>(1000000);
+
+    // Normalize topic prefix: ensure trailing slash
+    if (!topic_prefix.empty() && topic_prefix.back() != '/') {
+        topic_prefix += '/';
+    }
+
+    auto lwt_topic = std::format("{}rx_status", topic_prefix);
+    auto mqtt = Mqtt("sensors345", mqtt_host.c_str(), mqtt_port, mqtt_username.c_str(), mqtt_password.c_str(), lwt_topic.c_str(), "FAILED");
+    auto decoder = DigitalDecoder(mqtt, topic_prefix);
+    AnalogDecoder analog;
+
+    // Register signal handlers
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGTERM, signal_handler);
+
+    if (rtlsdr_get_device_count() < 1) {
+        spdlog::error("Could not find any devices");
         return -1;
     }
-        
-    rtlsdr_dev_t *dev = nullptr;
-        
-    if(rtlsdr_open(&dev, devId) < 0)
-    {
-        std::cout << "Failed to open device" << std::endl;
+
+    rtlsdr_dev_t* dev = nullptr;
+
+    if (rtlsdr_open(&dev, dev_id) < 0) {
+        spdlog::error("Failed to open device");
         return -1;
     }
-    
-    //
-    // Set the frequency
-    //
-    if(rtlsdr_set_center_freq(dev, freq) < 0)
-    {
-        std::cout << "Failed to set frequency" << std::endl;
+
+    global_dev = dev;
+
+    if (rtlsdr_set_center_freq(dev, freq) < 0) {
+        spdlog::error("Failed to set frequency");
         return -1;
     }
-    
-    std::cout << "Successfully set the frequency to " << rtlsdr_get_center_freq(dev) << std::endl;
-    
-    //
-    // Set the gain
-    //
-    if(rtlsdr_set_tuner_gain_mode(dev, 1) < 0)
-    {
-        std::cout << "Failed to set gain mode" << std::endl;
+
+    spdlog::info("Successfully set the frequency to {}", rtlsdr_get_center_freq(dev));
+
+    if (rtlsdr_set_tuner_gain_mode(dev, 1) < 0) {
+        spdlog::error("Failed to set gain mode");
         return -1;
     }
-    
-    if(rtlsdr_set_tuner_gain(dev, 490) < 0)
-    {
-        std::cout << "Failed to set gain" << std::endl;
+
+    if (rtlsdr_set_tuner_gain(dev, gain) < 0) {
+        spdlog::error("Failed to set gain");
         return -1;
     }
-    
-    std::cout << "Successfully set gain to " << rtlsdr_get_tuner_gain(dev) << std::endl;
-    
-    //
-    // Set the sample rate
-    //
-    if(rtlsdr_set_sample_rate(dev, 1000000) < 0)
-    {
-        std::cout << "Failed to set sample rate" << std::endl;
+
+    spdlog::info("Successfully set gain to {}", rtlsdr_get_tuner_gain(dev));
+
+    if (rtlsdr_set_sample_rate(dev, sample_rate) < 0) {
+        spdlog::error("Failed to set sample rate");
         return -1;
     }
-    
-    std::cout << "Successfully set the sample rate to " << rtlsdr_get_sample_rate(dev) << std::endl;
-    
-    //
-    // Prepare for streaming
-    //
+
+    spdlog::info("Successfully set the sample rate to {}", rtlsdr_get_sample_rate(dev));
+
     rtlsdr_reset_buffer(dev);
-    
-    for(uint32_t ii = 0; ii < 0x10000; ++ii)
-    {
+
+    std::array<float, 0x10000> mag_lut{};
+    for (uint32_t ii = 0; ii < 0x10000; ++ii) {
         uint8_t real_i = ii & 0xFF;
         uint8_t imag_i = ii >> 8;
-        
-        float real = (((float)real_i) - 127.4) * (1.0f/128.0f);
-        float imag = (((float)imag_i) - 127.4) * (1.0f/128.0f);
-        
-        float mag = std::sqrt(real*real + imag*imag);
-        magLut[ii] = mag;
+
+        float real = (static_cast<float>(real_i) - 127.4f) * (1.0f / 128.0f);
+        float imag = (static_cast<float>(imag_i) - 127.4f) * (1.0f / 128.0f);
+
+        float mag = std::sqrt(real * real + imag * imag);
+        mag_lut[ii] = mag;
     }
-    
-    //
-    // Common Receive
-    //
-    
-    aDecoder.setCallback([&](char data){dDecoder.handleData(data);});
-    
-    //
-    // Async Receive
-    //
-    
-    typedef void(*rtlsdr_read_async_cb_t)(unsigned char *buf, uint32_t len, void *ctx);
-    
-    auto cb = [](unsigned char *buf, uint32_t len, void *ctx)
-    {
-        AnalogDecoder *adec = (AnalogDecoder *)ctx;
-        
-        int n_samples = len/2;
-        for(int i = 0; i < n_samples; ++i)
-        {
-            float mag = magLut[*((uint16_t*)(buf + i*2))];
-            adec->handleMagnitude(mag);
+
+    analog.set_callback([&](const char data) { decoder.handle_data(data); });
+
+    struct CallbackContext {
+        AnalogDecoder* analog;
+        std::array<float, 0x10000>* mag_lut;
+    };
+
+    CallbackContext ctx{&analog, &mag_lut};
+
+    auto cb = [](unsigned char* buf, uint32_t len, void* user_ctx) {
+        const auto* context = static_cast<CallbackContext*>(user_ctx);
+
+        int n_samples = len / 2;
+        for (int i = 0; i < n_samples; ++i) {
+            uint16_t sample;
+            std::memcpy(&sample, buf + i * 2, sizeof(sample));
+            const float mag = (*context->mag_lut)[sample];
+            context->analog->handle_magnitude(mag);
         }
     };
 
-    // Setup watchdog to check for a common-mode failure (e.g. antenna disconnection)
-    //std::signal(SIGALRM, alarmHandler);
-  
     // Initialize RX state to good
-    dDecoder.setRxGood(true);
-    const int err = rtlsdr_read_async(dev, cb, &aDecoder, 0, 0);
-    std::cout << "Read Async returned " << err << std::endl;
-   
-/*    
-    //
-    // Synchronous Receive
-    //
-    static const size_t BUF_SIZE = 1024*256;
-    uint8_t buffer[BUF_SIZE];
-    
-    while(true)
-    {
-        int n_read = 0;
-        if(rtlsdr_read_sync(dev, buffer, BUF_SIZE, &n_read) < 0)
-        {
-            std::cout << "Failed to read from device" << std::endl;
-            return -1;
-        }
-        
-        int n_samples = n_read/2;
-        for(int i = 0; i < n_samples; ++i)
-        {
-            float mag = magLut[*((uint16_t*)(buffer + i*2))];
-            aDecoder.handleMagnitude(mag);
-        }
+    decoder.set_rx_good(true);
+    spdlog::info("Starting async read...");
+    const int err = rtlsdr_read_async(dev, cb, &ctx, 0, 0);
+
+    if (err != 0) {
+        spdlog::error("Read async returned {}", err);
     }
-*/    
-    //
-    // Shut down
-    //
+
+    spdlog::info("Shutting down...");
+    global_dev = nullptr;
     rtlsdr_close(dev);
     return 0;
 }
-
-
-
-

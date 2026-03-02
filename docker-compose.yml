@@ -1,0 +1,9 @@
+services:
+  345tomqtt:
+    build: .
+    container_name: 345tomqtt
+    restart: unless-stopped
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    volumes:
+      - ./config.yaml:/config.yaml:ro

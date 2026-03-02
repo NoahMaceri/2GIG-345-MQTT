@@ -1,74 +1,111 @@
-# HoneywellSecurityMQTT
+![License](https://img.shields.io/github/license/NoahMaceri/2GIG-345-MQTT)
+![Language](https://img.shields.io/github/languages/top/NoahMaceri/2GIG-345-MQTT)
+![Last Commit](https://img.shields.io/github/last-commit/NoahMaceri/2GIG-345-MQTT)
+![Issues](https://img.shields.io/github/issues/NoahMaceri/2GIG-345-MQTT)
+![Docker](https://img.shields.io/badge/docker-supported-blue?logo=docker)
 
-This project is based on fusterjj's HonewellSecurityMQTT project which was based on jhaines0's HoneywellSecurity. It listen's for events from 345MHz security sensors and sends messages via MQTT.  
+# 2GIG 345MHz Sensor MQTT Bridge
 
+A lightweight C++ bridge that captures 345MHz wireless security sensor signals using an RTL-SDR dongle and publishes device states to an MQTT broker — making 2GIG/Honeywell door sensors, keypads, and key fobs available to any home automation system.
+
+Based on [vondruska's 345SecurityMQTT](https://github.com/vondruska/345SecurityMQTT), which builds on [fusterjj's HoneywellSecurityMQTT](https://github.com/fusterjj/HoneywellSecurityMQTT) and [jhaines0's HoneywellSecurity](https://github.com/jhaines0/HoneywellSecurity).
 
 ## Features
- - Decodes data from sensors based on Honeywell's 345MHz system.  This includes rebrands such as 2GIG, Vivint, etc.
- - Requires no per-sensor configuration
- - Decodes sensor status such as tamper and low battery
- - Reports alarm and sensor status to an MQTT broker
- - Support for multisensors.  For example, a water sensor with high-temp and low-temp alerts.
- - Support for some 345 keyfobs and 345 keypads.
+
+- **Door/window sensors** — open/closed state, tamper detection, battery monitoring
+- **Keypads** — individual key presses and multi-key phrase recognition
+- **Key fobs** — STAY, AWAY, DISARM, AUX button presses
+- **Supervision tracking** — detects when devices stop reporting
+- **Retained MQTT messages** — sensor states persist across broker restarts
+- **Structured logging** — timestamped logs via spdlog with configurable log level
+- **Graceful shutdown** — clean exit on SIGINT/SIGTERM
+- **Configurable topics** — customizable MQTT topic prefix
+- **Docker support** — multi-stage build on Debian slim
 
 ## Requirements
- - RTL-SDR USB adapter; commonly available on Amazon
- - rtlsdr library
- - mosquittopp library
- - gcc
 
-## Installation
+- RTL-SDR USB dongle (RTL2832U-based, e.g. NooElec or similar)
+  - Ensure that you have installed the necessary drivers and have permissions to access the device (e.g. via `udev` rules on Linux)
+- MQTT broker (Mosquitto, EMQX, etc.)
+
+## Quick Start (Docker)
+
+```bash
+docker compose up -d
+```
+
+Or without Compose:
+
+```bash
+docker build -t 345tomqtt .
+docker run --device /dev/bus/usb -v ./config.yaml:/config.yaml 345tomqtt
+```
+
+## Building from Source
+
 ### Dependencies
-On a Debian-based system, something like this should work:
-```
-  sudo apt-get install build-essential librtlsdr-dev rtl-sdr libmosquittopp-dev
-```
 
-To avoid having to run as root, you can add the following rule to a file in `/etc/udev/rules.d`:
-```
-  SUBSYSTEMS=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2838", MODE:="0660", GROUP:="audio"
+```bash
+sudo apt-get install cmake build-essential librtlsdr-dev libmosquittopp-dev libyaml-cpp-dev libspdlog-dev
 ```
 
-Then add the desired user to the `audio` group.
-If you plugged in the RTL-SDR before installing rtl-sdr, you probably will need to do something like `sudo rmmod rtl2832 dvb_usb_rtl28xxu` then remove and reinstall the adapter.
+### Build
 
-### Configuration
-Modify `mqtt_config.h` to specify the host, port, username, and password of your MQTT broker.  If `""` is used for the username or password, then an anonymous login is attempted.  Also, the payloads of some signals can be configured.
-
-### Building
-```
-  cd src
-  ./build.sh
+```bash
+cmake -B build -S .
+cmake --build build
 ```
 
-### Running
-  `./345toMqtt`
+### Run
 
-#### Command line flags
-| Flag          | Meaning   | Default    |
-|---------------|-----------|------------|
-| `-d` <int>    | Device id | 0          |
-| `-f` <int>    | Frequency | 345000000  |
+```bash
+./build/345toMqtt
+```
 
-#### Environment variables
+**Options:**
 
-These environment variables will override the values set in `mqtt_config.h`
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-c <path>` | Path to config file | `config.yaml` |
 
-| Variable name   | Meaning                                          |
-|-----------------|--------------------------------------------------|
-| `MQTT_HOST`     | Hostname or IP address of the MQTT server        |
-| `MQTT_PORT`     | Port of the MQTT server                          |
-| `MQTT_USERNAME` | Username to use for logging into the MQTT server |
-| `MQTT_PASSWORD` | Password for the provided username               |
+## Configuration
 
-### MQTT Message Format
+Edit `config.yaml`:
 
-| Topic                                               | Payload                 | Retain |
-|-----------------------------------------------------|-------------------------|--------|
-| security/sensors345/sensor/`<txid>`/loop`<N>`       | `OPEN` or `CLOSED`      | Yes    |
-| security/sensors345/sensor/`<txid>`/tamper          | `TAMPER` or `OK`        | Yes    |
-| security/sensors345/sensor/`<txid>`/battery         | `LOW` or `OK`           | Yes    |
-| security/sensors345/keypad/`<txid>`/keypress        | `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `*`, `#`, `STAY`, `AWAY`, `FIRE`, `POLICE` | No |
-| security/sensors345/keypad/`<txid>`/keyphrase/<LEN> | Numbers (or `#` or `*` entered within 2 seconds of each other.  Regex: `[*#0-9]{2,}` | No |
-| security/sensors345/keyfob/`<txid>`/keypress        | `STAY`, `AWAY`, `DISARM`, `AUX` | No |
+```yaml
+mqtt:
+  host: 127.0.0.1
+  port: 1883
+  username: user
+  password: password
+  topic_prefix: security/sensors345
 
+rtlsdr:
+  device_id: 0
+  frequency: 345000000
+  gain: 490
+  sample_rate: 1000000
+
+log_level: info
+```
+
+All fields have sensible defaults if omitted.
+
+## MQTT Topics
+
+The default topic prefix is `security/sensors345`. This is configurable via `mqtt.topic_prefix` in `config.yaml`.
+
+| Topic | Payload | Retain |
+|-------|---------|--------|
+| `<prefix>/sensor/<txid>/loop<N>` | `OPEN` / `CLOSED` | Yes |
+| `<prefix>/sensor/<txid>/tamper` | `TAMPER` / `OK` | Yes |
+| `<prefix>/sensor/<txid>/battery` | `LOW` / `OK` | Yes |
+| `<prefix>/keypad/<txid>/keypress` | `0`-`9`, `*`, `#`, `STAY`, `AWAY`, `FIRE`, `POLICE` | No |
+| `<prefix>/keypad/<txid>/keyphrase/<LEN>` | `[*#0-9]{2,}` (keys entered within 2s) | No |
+| `<prefix>/keyfob/<txid>/keypress` | `STAY`, `AWAY`, `DISARM`, `AUX` | No |
+| `<prefix>/rx_status` | `OK` / `FAILED` | Yes |
+| `<prefix>/diagnostics/error_rate` | `<errors>/<total>` | Yes |
+
+## License
+
+[Apache 2.0](LICENSE)

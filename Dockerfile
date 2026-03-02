@@ -1,25 +1,22 @@
-FROM ubuntu:22.04 AS builder
+FROM debian:bookworm-slim AS builder
 
-# Install build tools and remove apt-cache afterwards
 RUN apt-get -q update && apt-get install -yq --no-install-recommends \
-	build-essential librtlsdr-dev rtl-sdr pkg-config libmosquittopp-dev git cmake libyaml-cpp-dev \
+	build-essential librtlsdr-dev pkg-config libmosquittopp-dev cmake libyaml-cpp-dev libspdlog-dev \
 	&& apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Switch into our apps working directory
 WORKDIR /345tomqtt
 
 COPY . /345tomqtt
 
 RUN cmake -B build -S . && cmake --build build
 
-FROM ubuntu:22.04
+FROM debian:bookworm-slim
 
 RUN apt-get -q update && apt-get install -yq --no-install-recommends \
-	librtlsdr-dev rtl-sdr libmosquittopp-dev \
+	librtlsdr0 rtl-sdr libmosquittopp1 libspdlog1.10 libyaml-cpp0.8 \
 	&& apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /345tomqtt/build/345toMqtt /345toMqtt
 COPY ./config.yaml /config.yaml
 
-# Run our binary on container startup
-CMD ./345toMqtt
+CMD ["/345toMqtt", "-c", "/config.yaml"]

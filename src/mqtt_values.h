@@ -1,6 +1,0 @@
-#define OPEN_SENSOR_MSG "OPEN"
-#define CLOSED_SENSOR_MSG "CLOSED"
-#define TAMPER_MSG "TAMPER"
-#define UNTAMPERED_MSG "OK"
-#define LOW_BAT_MSG "LOW"
-#define OK_BAT_MSG "OK"

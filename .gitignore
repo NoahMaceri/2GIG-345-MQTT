@@ -1,3 +1,3 @@
-*.swp
-src/345toMqtt
-*~
+.idea/
+cmake-build*/
+build*/
