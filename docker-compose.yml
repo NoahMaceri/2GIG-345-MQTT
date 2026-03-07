@@ -1,7 +1,7 @@
 services:
-  345tomqtt:
+  2GIG-345-MQTT:
     build: .
-    container_name: 345tomqtt
+    container_name: 2gig_345_mqtt
     restart: unless-stopped
     devices:
       - /dev/bus/usb:/dev/bus/usb

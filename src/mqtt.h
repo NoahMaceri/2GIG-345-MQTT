@@ -1,6 +1,8 @@
 #ifndef MQTT_H
 #define MQTT_H
 
+#include "imqtt.h"
+
 #include <string>
 #include <string_view>
 #include <mosquittopp.h>
@@ -10,7 +12,7 @@
 /// Manages connection lifecycle, authentication, and publishing.
 /// Starts a background thread for async I/O on construction and
 /// cleanly shuts down on destruction.
-class Mqtt : public mosqpp::mosquittopp {
+class Mqtt : public mosqpp::mosquittopp, public IMqtt {
 private:
     std::string host;
     std::string id;

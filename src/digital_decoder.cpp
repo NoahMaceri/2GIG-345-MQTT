@@ -1,5 +1,4 @@
 #include "digital_decoder.h"
-#include "mqtt.h"
 
 #include <spdlog/spdlog.h>
 #include <string>
@@ -15,6 +14,7 @@ constexpr uint64_t SYNC_PATTERN = 0xFFFE000000000000ul;
 
 constexpr int RX_GOOD_MIN_SEC = 60;
 constexpr int DIAG_PUBLISH_INTERVAL_SEC = 60;
+constexpr int HEARTBEAT_INTERVAL_SEC = 15;
 
 // Payload field masks and shifts
 constexpr uint64_t SOF_MASK       = 0xF00000000000ul;
@@ -316,6 +316,11 @@ void DigitalDecoder::handle_payload(uint64_t payload) {
         set_rx_good(true);
         update_keyfob_state(ser, payload);
     }
+
+    // Publish diagnostics last update time
+    const auto diag_topic = std::format("{}diagnostics/last_valid_packet_time", topic_prefix);
+    const auto time_str = std::to_string(std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count());
+    publish_or_warn(diag_topic, time_str, 0, true);
 }
 
 
@@ -352,10 +357,20 @@ void DigitalDecoder::decode_bit(bool value) {
     }
 }
 
-void DigitalDecoder::handle_data(char data) {
+void DigitalDecoder::handle_data(const char data) {
     constexpr int samples_per_bit = 8;
 
     if (data != 0 && data != 1) return;
+
+    // Publish periodic heartbeat with wall-clock timestamp
+    const auto now = std::chrono::steady_clock::now();
+    if ((now - last_heartbeat_time) > std::chrono::seconds(HEARTBEAT_INTERVAL_SEC)) {
+        last_heartbeat_time = now;
+        const auto wall_now = std::chrono::system_clock::now();
+        const auto epoch_sec = std::chrono::duration_cast<std::chrono::seconds>(wall_now.time_since_epoch()).count();
+        const auto heartbeat_topic = std::format("{}diagnostics/heartbeat", topic_prefix);
+        publish_or_warn(heartbeat_topic, std::to_string(epoch_sec), 0, true);
+    }
 
     const bool this_sample = (data == 1);
 

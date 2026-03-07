@@ -37,8 +37,8 @@ docker compose up -d
 Or without Compose:
 
 ```bash
-docker build -t 345tomqtt .
-docker run --device /dev/bus/usb -v ./config.yaml:/config.yaml 345tomqtt
+docker build -t 2GIG-345-Decoder .
+docker run --device /dev/bus/usb -v ./config.yaml:/config.yaml 2GIG-345-Decoder
 ```
 
 ## Building from Source
@@ -59,7 +59,7 @@ cmake --build build
 ### Run
 
 ```bash
-./build/345toMqtt
+./build/2GIG-345-Decoder
 ```
 
 **Options:**
@@ -105,6 +105,17 @@ The default topic prefix is `security/sensors345`. This is configurable via `mqt
 | `<prefix>/keyfob/<txid>/keypress` | `STAY`, `AWAY`, `DISARM`, `AUX` | No |
 | `<prefix>/rx_status` | `OK` / `FAILED` | Yes |
 | `<prefix>/diagnostics/error_rate` | `<errors>/<total>` | Yes |
+| `<prefix>/diagnostics/heartbeat` | Unix timestamp (seconds) | Yes |
+
+## Tests
+
+Unit tests use [Google Test](https://github.com/google/googletest) (fetched automatically via CMake). Tests are not built by default — pass `-DBUILD_TESTS=ON` to enable them:
+
+```bash
+cmake -B build -S . -DBUILD_TESTS=ON
+cmake --build build --target tests
+./build/tests
+```
 
 ## License
 

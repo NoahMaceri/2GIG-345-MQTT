@@ -27,3 +27,29 @@ add_executable(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME} PkgConfig::Mosquitto PkgConfig::RTL-SDR ${YAML_CPP_LIBRARIES} spdlog::spdlog)
+
+# Tests
+option(BUILD_TESTS "Build unit tests" OFF)
+if(BUILD_TESTS)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG v1.14.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    enable_testing()
+
+    add_executable(tests
+        tests/test_digital_decoder.cpp
+        tests/test_analog_decoder.cpp
+        src/digital_decoder.cpp
+        src/analog_decoder.cpp
+    )
+    target_include_directories(tests PRIVATE src tests)
+    target_link_libraries(tests GTest::gtest_main spdlog::spdlog)
+    include(GoogleTest)
+    gtest_discover_tests(tests)
+endif()

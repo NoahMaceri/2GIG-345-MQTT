@@ -1,7 +1,7 @@
 #ifndef DIGITAL_DECODER_H
 #define DIGITAL_DECODER_H
 
-#include "mqtt.h"
+#include "imqtt.h"
 
 #include <cstdint>
 #include <chrono>
@@ -16,11 +16,13 @@
 ///
 /// Supports Honeywell, 2GIG, and Vivint sensors, keypads, and keyfobs.
 class DigitalDecoder {
+    friend class DigitalDecoderAccess;
+
 public:
     /// @param mqtt_init    MQTT client used for publishing sensor state.
     /// @param topic_prefix Base MQTT topic (e.g. "security/sensors345"). A trailing
     ///                     slash is appended automatically if missing.
-    DigitalDecoder(Mqtt& mqtt_init, std::string topic_prefix)
+    DigitalDecoder(IMqtt& mqtt_init, std::string topic_prefix)
         : mqtt(mqtt_init), topic_prefix(std::move(topic_prefix)) {
         // Normalize: ensure trailing slash
         if (!this->topic_prefix.empty() && this->topic_prefix.back() != '/') {
@@ -71,7 +73,7 @@ private:
     bool rx_good = false;
     std::chrono::steady_clock::time_point last_rx_good_update_time{};
     std::chrono::steady_clock::time_point last_timeout_check_time{};
-    Mqtt& mqtt;
+    IMqtt& mqtt;
     std::string topic_prefix;
     uint32_t packet_count = 0;
     uint32_t error_count = 0;
@@ -103,6 +105,7 @@ private:
     std::map<uint32_t, KeypadState> keypad_status_map;
     std::map<uint32_t, uint64_t> last_keyfob_payloads;
     std::chrono::steady_clock::time_point last_diag_publish_time{};
+    std::chrono::steady_clock::time_point last_heartbeat_time{};
 
     /// @brief Manchester decoding state machine phases.
     /// Each bit period has two phases (A and B). A transition between
