@@ -16,6 +16,53 @@ constexpr uint64_t SYNC_PATTERN = 0xFFFE000000000000ul;
 constexpr int RX_GOOD_MIN_SEC = 60;
 constexpr int DIAG_PUBLISH_INTERVAL_SEC = 60;
 
+// Payload field masks and shifts
+constexpr uint64_t SOF_MASK       = 0xF00000000000ul;
+constexpr int      SOF_SHIFT      = 44;
+constexpr uint64_t SERIAL_MASK    = 0x0FFFFF000000ul;
+constexpr int      SERIAL_SHIFT   = 24;
+constexpr uint64_t STATUS_MASK    = 0x000000FF0000ul;
+constexpr int      STATUS_SHIFT   = 16;
+constexpr uint64_t KEYCODE_MASK   = 0x000000F00000ul;
+constexpr int      KEYCODE_SHIFT  = 20;
+
+// Sensor status bit masks
+constexpr uint64_t LOOP1_BIT      = 0x000000800000ul;
+constexpr uint64_t TAMPER_BIT     = 0x000000400000ul;
+constexpr uint64_t LOOP2_BIT      = 0x000000200000ul;
+constexpr uint64_t LOOP3_BIT      = 0x000000100000ul;
+constexpr uint64_t LOW_BAT_BIT    = 0x000000080000ul;
+constexpr uint64_t SUPERVISED_BIT = 0x000000040000ul;
+constexpr uint64_t KEYPAD_BAT_BIT = 0x000000020000ul;
+
+// Device type flags (in status byte)
+constexpr uint64_t KEYPAD_FLAG = 0x01;
+constexpr uint64_t KEYFOB_FLAG = 0x02;
+
+// CRC polynomials
+constexpr uint64_t CRC_POLY_2GIG     = 0x18050;
+constexpr uint64_t CRC_POLY_HONEYWELL = 0x18005;
+
+// Start-of-frame brand identifiers
+constexpr uint64_t SOF_HONEYWELL = 0x8;
+constexpr uint64_t SOF_VIVINT_D  = 0xD;
+constexpr uint64_t SOF_VIVINT_E  = 0xE;
+
+// Keyfob button codes
+constexpr char KEYFOB_AWAY   = 0x1;
+constexpr char KEYFOB_DISARM = 0x2;
+constexpr char KEYFOB_STAY   = 0x4;
+constexpr char KEYFOB_AUX    = 0x8;
+
+// Keypad key codes
+constexpr char KEYPAD_STAR   = 0xA;
+constexpr char KEYPAD_ZERO   = 0xB;
+constexpr char KEYPAD_HASH   = 0xC;
+constexpr char KEYPAD_STAY   = 0xD;
+constexpr char KEYPAD_AWAY   = 0xE;
+constexpr char KEYPAD_FIRE   = 0xF;
+constexpr char KEYPAD_POLICE = 0x0;
+
 inline constexpr std::string_view OPEN_SENSOR_MSG = "OPEN";
 inline constexpr std::string_view CLOSED_SENSOR_MSG = "CLOSED";
 inline constexpr std::string_view TAMPER_MSG = "TAMPER";
@@ -51,26 +98,22 @@ void DigitalDecoder::set_rx_good(const bool state) {
 }
 
 void DigitalDecoder::update_keyfob_state(uint32_t serial, const uint64_t payload) {
-    if (auto it = last_keyfob_payloads.find(serial); it != last_keyfob_payloads.end() && it->second == payload) {
+    if (const auto it = last_keyfob_payloads.find(serial); it != last_keyfob_payloads.end() && it->second == payload) {
         return;
     }
 
     const auto topic = std::format("{}keyfob/{}/keypress", topic_prefix, serial);
-    const char c = ((payload & 0x000000F00000) >> 20);
+    const char c = ((payload & KEYCODE_MASK) >> KEYCODE_SHIFT);
     std::string key;
-    if (c == 0x1) {
+    if (c == KEYFOB_AWAY) {
         key = "AWAY";
-    }
-    else if (c == 0x2) {
+    } else if (c == KEYFOB_DISARM) {
         key = "DISARM";
-    }
-    else if (c == 0x4) {
+    } else if (c == KEYFOB_STAY) {
         key = "STAY";
-    }
-    else if (c == 0x8) {
+    } else if (c == KEYFOB_AUX) {
         key = "AUX";
-    }
-    else {
+    } else {
         key = "UNK";
     }
     publish_or_warn(topic, key, 1, false);
@@ -87,11 +130,11 @@ void DigitalDecoder::update_keypad_state(uint32_t serial, const uint64_t payload
     current_state.last_update_time = now;
     current_state.has_lost_supervision = false;
 
-    current_state.sequence = (payload & 0xF00000000000) >> 44;
-    current_state.low_bat = payload & 0x000000020000;
+    current_state.sequence = (payload & SOF_MASK) >> SOF_SHIFT;
+    current_state.low_bat = payload & KEYPAD_BAT_BIT;
 
     // If supervised, we won't get keypress updates, so we shouldn't update the state or publish anything.
-    if (payload & 0x000000040000) {
+    if (payload & SUPERVISED_BIT) {
         return;
     }
 
@@ -99,48 +142,39 @@ void DigitalDecoder::update_keypad_state(uint32_t serial, const uint64_t payload
     if (found == keypad_status_map.end()) {
         last_state.sequence = static_cast<char>(0xff);
         last_state.low_bat = !current_state.low_bat;
-    }
-    else {
+    } else {
         last_state = found->second;
     }
 
     if (current_state.sequence != last_state.sequence) {
         const auto topic = std::format("{}keypad/{}/keypress", topic_prefix, serial);
-        const char c = ((payload & 0x000000F00000) >> 20);
+        const char c = ((payload & KEYCODE_MASK) >> KEYCODE_SHIFT);
 
         std::string key;
-        if (c == 0xA) {
+        if (c == KEYPAD_STAR) {
             key = "*";
-        }
-        else if (c == 0xB) {
+        } else if (c == KEYPAD_ZERO) {
             key = "0";
-        }
-        else if (c == 0xC) {
+        } else if (c == KEYPAD_HASH) {
             key = "#";
-        }
-        else if (c == 0xD) {
+        } else if (c == KEYPAD_STAY) {
             key = "STAY";
-        }
-        else if (c == 0xE) {
+        } else if (c == KEYPAD_AWAY) {
             key = "AWAY";
-        }
-        else if (c == 0xF) {
+        } else if (c == KEYPAD_FIRE) {
             key = "FIRE";
-        }
-        else if (c == 0x0) {
+        } else if (c == KEYPAD_POLICE) {
             key = "POLICE";
-        }
-        else {
+        } else {
             key = (c + '0');
         }
         publish_or_warn(topic, key, 1, false);
 
-        if ((c >= 1 && c <= 0xC) && (now - last_state.last_update_time <= std::chrono::seconds(2)) && (last_state.phrase.length() < 10)) {
+        if ((c >= 1 && c <= KEYPAD_HASH) && (now - last_state.last_update_time <= std::chrono::seconds(2)) && (last_state.phrase.length() < 10)) {
             current_state.phrase = last_state.phrase + key;
             const auto phrase_topic = std::format("{}keypad/{}/keyphrase/{}", topic_prefix, serial, current_state.phrase.length());
             publish_or_warn(phrase_topic, current_state.phrase, 1, false);
-        }
-        else if (c == 0xB || (c >= 1 && c <= 9)) {
+        } else if (c == KEYPAD_ZERO || (c >= 1 && c <= 9)) {
             current_state.phrase = key;
         }
 
@@ -157,13 +191,13 @@ void DigitalDecoder::update_sensor_state(uint32_t serial, uint64_t payload) {
     current_state.last_update_time = now;
     current_state.has_lost_supervision = false;
 
-    current_state.loop1 = payload & 0x000000800000;
-    current_state.loop2 = payload & 0x000000200000;
-    current_state.loop3 = payload & 0x000000100000;
-    current_state.tamper = payload & 0x000000400000;
-    current_state.low_bat = payload & 0x000000080000;
+    current_state.loop1 = payload & LOOP1_BIT;
+    current_state.loop2 = payload & LOOP2_BIT;
+    current_state.loop3 = payload & LOOP3_BIT;
+    current_state.tamper = payload & TAMPER_BIT;
+    current_state.low_bat = payload & LOW_BAT_BIT;
 
-    const bool supervised = payload & 0x000000040000;
+    const bool supervised = payload & SUPERVISED_BIT;
 
     const auto found = sensor_status_map.find(serial);
     if (found == sensor_status_map.end()) {
@@ -173,8 +207,7 @@ void DigitalDecoder::update_sensor_state(uint32_t serial, uint64_t payload) {
         last_state.loop3 = !current_state.loop3;
         last_state.tamper = !current_state.tamper;
         last_state.low_bat = !current_state.low_bat;
-    }
-    else {
+    } else {
         last_state = found->second;
     }
 
@@ -211,24 +244,14 @@ void DigitalDecoder::check_for_timeouts() {
 }
 
 bool DigitalDecoder::is_payload_valid(const uint64_t payload, uint64_t polynomial) {
-    const uint64_t sof = (payload & 0xF00000000000) >> 44;
+    const uint64_t sof = (payload & SOF_MASK) >> SOF_SHIFT;
 
     if (polynomial == 0) {
-        if (sof == 0x2 || sof == 0x3 || sof == 0x4 || sof == 0x7 || sof == 0x9 || sof == 0xA || sof == 0xB || sof == 0xC || sof == 0xF) {
-            // 2GIG brand
-            polynomial = 0x18050;
-        }
-        else if (sof == 0x8) {
-            // Honeywell Sensor
-            polynomial = 0x18005;
-        }
-        else if (sof == 0xD || sof == 0xE) {
-            // Vivint
-            polynomial = 0x18050;
-        }
-        else {
-            // Unknown brand
-            polynomial = 0x18050;
+        if (sof == SOF_HONEYWELL) {
+            polynomial = CRC_POLY_HONEYWELL;
+        } else {
+            // 2GIG, Vivint, and unknown brands all use the same polynomial
+            polynomial = CRC_POLY_2GIG;
         }
     }
     uint64_t sum = payload & (~SYNC_MASK);
@@ -245,29 +268,25 @@ bool DigitalDecoder::is_payload_valid(const uint64_t payload, uint64_t polynomia
 }
 
 void DigitalDecoder::handle_payload(uint64_t payload) {
-    uint64_t sof = (payload & 0xF00000000000) >> 44;
-    uint64_t ser = (payload & 0x0FFFFF000000) >> 24;
-    uint64_t typ = (payload & 0x000000FF0000) >> 16;
+    const uint64_t sof = (payload & SOF_MASK) >> SOF_SHIFT;
+    const uint64_t ser = (payload & SERIAL_MASK) >> SERIAL_SHIFT;
+    const uint64_t typ = (payload & STATUS_MASK) >> STATUS_SHIFT;
 
     const bool valid_sensor = is_payload_valid(payload);
-    const bool valid_keypad = is_payload_valid(payload, 0x18050) && (typ & 0x01);
-    const bool valid_keyfob = is_payload_valid(payload, 0x18050) && (typ & 0x02);
+    const bool valid_keypad = is_payload_valid(payload, CRC_POLY_2GIG) && (typ & KEYPAD_FLAG);
+    const bool valid_keyfob = is_payload_valid(payload, CRC_POLY_2GIG) && (typ & KEYFOB_FLAG);
 
     if (valid_sensor || valid_keypad || valid_keyfob) {
         spdlog::info("Valid Payload: {:X} (Serial {}/{:X}, Status {:X})", payload, ser, ser, typ);
-        if (sof == 0x8) {
+        if (sof == SOF_HONEYWELL) {
             spdlog::info("Honeywell Sensor");
-        }
-        else if (sof == 0xD || sof == 0xE) {
+        } else if (sof == SOF_VIVINT_D || sof == SOF_VIVINT_E) {
             spdlog::info("Vivint Sensor {:x}", sof);
         }
-    }
-    else {
+    } else {
         spdlog::warn("Invalid Payload: {:X} (Serial {}/{:X}, Status {:X})", payload, ser, ser, typ);
-        if (sof != 0x2 && sof != 0x3 && sof != 0x4
-            && sof != 0x7 && sof != 0x8 && sof != 0x9
-            && sof != 0xA && sof != 0xB
-            && sof != 0xC && sof != 0xD && sof != 0xE && sof != 0xF) {
+        // Known SOFs: 0x2-0x4, 0x7-0xF
+        if (sof < 0x2 || sof == 0x5 || sof == 0x6) {
             spdlog::warn("Unknown Brand Sensor {:x}", sof);
         }
     }
@@ -290,12 +309,10 @@ void DigitalDecoder::handle_payload(uint64_t payload) {
     if (valid_sensor && !keypad_status_map.contains(ser)) {
         set_rx_good(true);
         update_sensor_state(ser, payload);
-    }
-    else if (valid_keypad) {
+    } else if (valid_keypad) {
         set_rx_good(true);
         update_keypad_state(ser, payload);
-    }
-    else if (valid_keyfob) {
+    } else if (valid_keyfob) {
         set_rx_good(true);
         update_keyfob_state(ser, payload);
     }
@@ -348,8 +365,7 @@ void DigitalDecoder::handle_data(char data) {
         if ((samples_since_edge % samples_per_bit) == (samples_per_bit / 2)) {
             decode_bit(this_sample);
         }
-    }
-    else {
+    } else {
         samples_since_edge = 1;
     }
     last_sample = this_sample;

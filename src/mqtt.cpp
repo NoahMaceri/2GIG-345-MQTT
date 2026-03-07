@@ -25,8 +25,7 @@ Mqtt::Mqtt(const char* id, const char* host, const int port, const char* usernam
     if (std::strlen(will_topic) > 0 && std::strlen(will_message) > 0) {
         if (int rc = set_will(will_topic, will_message)) {
             spdlog::info("Set LWT message to: {}", will_message);
-        }
-        else {
+        } else {
             spdlog::error("Failed to set LWT message");
         }
     }
@@ -55,8 +54,7 @@ void Mqtt::on_disconnect(int rc) {
 void Mqtt::on_connect(int rc) {
     if (rc == 0) {
         spdlog::info("MQTT connected");
-    }
-    else {
+    } else {
         spdlog::error("MQTT failed to connect (rc={})", rc);
     }
 }

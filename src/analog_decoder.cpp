@@ -29,8 +29,7 @@ void AnalogDecoder::handle_magnitude(float value) {
     if (cb) {
         if (value > ook_max * OOK_THRESHOLD_RATIO) {
             cb(1);
-        }
-        else {
+        } else {
             cb(0);
         }
     }

@@ -1,3 +1,12 @@
+/// @file main.cpp
+/// @brief Entry point for the 345 MHz security sensor decoder.
+///
+/// Reads IQ samples from an RTL-SDR dongle, converts them to magnitude via a
+/// precomputed lookup table, runs OOK demodulation and Manchester decoding,
+/// then publishes sensor/keypad/keyfob state changes over MQTT.
+///
+/// Configuration is loaded from a YAML file (default: config.yaml).
+
 #include "digital_decoder.h"
 #include "analog_decoder.h"
 #include "mqtt.h"
@@ -15,8 +24,9 @@
 #include <atomic>
 
 static std::atomic<bool> running{true};
-static rtlsdr_dev_t* global_dev = nullptr;
+static rtlsdr_dev_t* global_dev = nullptr; ///< Shared with signal handler to cancel async reads.
 
+/// @brief SIGINT/SIGTERM handler — cancels the RTL-SDR async read loop.
 static void signal_handler(int /*signum*/) {
     running = false;
     if (global_dev) {
@@ -36,12 +46,10 @@ int main(int argc, char** argv) {
         std::string_view arg = argv[i];
         if (arg == "-c" && i + 1 < argc) {
             config_path = argv[++i];
-        }
-        else if (arg == "-h" || arg == "--help") {
+        } else if (arg == "-h" || arg == "--help") {
             usage(argv[0]);
             return 0;
-        }
-        else {
+        } else {
             spdlog::warn("Unknown argument: {}", arg);
             usage(argv[0]);
             return 1;
@@ -51,8 +59,7 @@ int main(int argc, char** argv) {
     YAML::Node config;
     try {
         config = YAML::LoadFile(config_path);
-    }
-    catch (const YAML::Exception& e) {
+    } catch (const YAML::Exception& e) {
         spdlog::error("Failed to load {}: {}", config_path, e.what());
         return 1;
     }
@@ -125,6 +132,8 @@ int main(int argc, char** argv) {
 
     rtlsdr_reset_buffer(dev);
 
+    // Precompute magnitude lookup table: maps every possible (I, Q) byte pair
+    // to sqrt(I^2 + Q^2), avoiding per-sample sqrt calls at runtime.
     std::array<float, 0x10000> mag_lut{};
     for (uint32_t ii = 0; ii < 0x10000; ++ii) {
         uint8_t real_i = ii & 0xFF;
