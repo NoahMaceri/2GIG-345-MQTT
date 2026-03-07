@@ -8,7 +8,7 @@
 
 A lightweight C++ bridge that captures 345MHz wireless security sensor signals using an RTL-SDR dongle and publishes device states to an MQTT broker — making 2GIG/Honeywell door sensors, keypads, and key fobs available to any home automation system.
 
-Based on [vondruska's 345SecurityMQTT](https://github.com/vondruska/345SecurityMQTT), which builds on [fusterjj's HoneywellSecurityMQTT](https://github.com/fusterjj/HoneywellSecurityMQTT) and [jhaines0's HoneywellSecurity](https://github.com/jhaines0/HoneywellSecurity).
+Based on [vondruska's 345SecurityMQTT](https://github.com/vondruska/345SecurityMQTT), which is based on [fusterjj's HoneywellSecurityMQTT](https://github.com/fusterjj/HoneywellSecurityMQTT) which is based on [jhaines0's HoneywellSecurity](https://github.com/jhaines0/HoneywellSecurity).
 
 ## Features
 

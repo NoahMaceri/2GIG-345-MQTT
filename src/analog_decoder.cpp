@@ -7,10 +7,10 @@ constexpr int HW_RATIO = 17;
 constexpr float MIN_OOK_THRESHOLD = 0.25f;
 constexpr float OOK_THRESHOLD_RATIO = 0.75f;
 constexpr float OOK_DECAY_PER_SAMPLE = 0.0001f;
-constexpr double FILTER_ALPHA = 0.7;
+constexpr float FILTER_ALPHA = 0.7f;
 
 void AnalogDecoder::handle_magnitude(float value) {
-    val = FILTER_ALPHA * val + (1.0 - FILTER_ALPHA) * value;
+    val = FILTER_ALPHA * val + (1.0f - FILTER_ALPHA) * value;
     value = val;
 
     if (discarded_samples < (HW_RATIO - 1)) {

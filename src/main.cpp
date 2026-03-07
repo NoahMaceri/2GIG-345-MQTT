@@ -74,12 +74,7 @@ int main(int argc, char** argv) {
     int gain = config["rtlsdr"]["gain"].as<int>(490);
     int sample_rate = config["rtlsdr"]["sample_rate"].as<int>(1000000);
 
-    // Normalize topic prefix: ensure trailing slash
-    if (!topic_prefix.empty() && topic_prefix.back() != '/') {
-        topic_prefix += '/';
-    }
-
-    auto lwt_topic = std::format("{}rx_status", topic_prefix);
+    auto lwt_topic = std::format("{}rx_status", topic_prefix.empty() || topic_prefix.back() == '/' ? topic_prefix : topic_prefix + "/");
     auto mqtt = Mqtt("sensors345", mqtt_host.c_str(), mqtt_port, mqtt_username.c_str(), mqtt_password.c_str(), lwt_topic.c_str(), "FAILED");
     auto decoder = DigitalDecoder(mqtt, topic_prefix);
     AnalogDecoder analog;

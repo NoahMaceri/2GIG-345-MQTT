@@ -10,7 +10,7 @@
 constexpr int SENSOR_TIMEOUT_MIN = 90 * 5;
 constexpr int TIMEOUT_CHECK_INTERVAL_SEC = 60;
 
-constexpr uint64_t SYNC_MASK    = 0xFFFF000000000000ul;
+constexpr uint64_t SYNC_MASK = 0xFFFF000000000000ul;
 constexpr uint64_t SYNC_PATTERN = 0xFFFE000000000000ul;
 
 constexpr int RX_GOOD_MIN_SEC = 60;
@@ -51,7 +51,7 @@ void DigitalDecoder::set_rx_good(const bool state) {
 }
 
 void DigitalDecoder::update_keyfob_state(uint32_t serial, const uint64_t payload) {
-    if (payload == last_keyfob_payload) {
+    if (auto it = last_keyfob_payloads.find(serial); it != last_keyfob_payloads.end() && it->second == payload) {
         return;
     }
 
@@ -75,7 +75,7 @@ void DigitalDecoder::update_keyfob_state(uint32_t serial, const uint64_t payload
     }
     publish_or_warn(topic, key, 1, false);
 
-    last_keyfob_payload = payload;
+    last_keyfob_payloads[serial] = payload;
 }
 
 void DigitalDecoder::update_keypad_state(uint32_t serial, const uint64_t payload) {
@@ -203,7 +203,7 @@ void DigitalDecoder::check_for_timeouts() {
         if ((now - state.last_update_time) > std::chrono::minutes(SENSOR_TIMEOUT_MIN)) {
             if (!state.has_lost_supervision) {
                 state.has_lost_supervision = true;
-                auto status_topic = std::format("{}{}/status", topic_prefix, serial);
+                auto status_topic = std::format("{}sensor/{}/status", topic_prefix, serial);
                 publish_or_warn(status_topic, TIMEOUT_MSG);
             }
         }
@@ -235,8 +235,7 @@ bool DigitalDecoder::is_payload_valid(const uint64_t payload, uint64_t polynomia
     uint64_t current_divisor = polynomial << 31;
 
     while (current_divisor >= polynomial) {
-        if (__builtin_clzll(sum) == __builtin_clzll(current_divisor))
-        {
+        if (sum != 0 && __builtin_clzll(sum) == __builtin_clzll(current_divisor)) {
             sum ^= current_divisor;
         }
         current_divisor >>= 1;
@@ -258,10 +257,12 @@ void DigitalDecoder::handle_payload(uint64_t payload) {
         spdlog::info("Valid Payload: {:X} (Serial {}/{:X}, Status {:X})", payload, ser, ser, typ);
         if (sof == 0x8) {
             spdlog::info("Honeywell Sensor");
-        } else if (sof == 0xD || sof == 0xE) {
+        }
+        else if (sof == 0xD || sof == 0xE) {
             spdlog::info("Vivint Sensor {:x}", sof);
         }
-    } else {
+    }
+    else {
         spdlog::warn("Invalid Payload: {:X} (Serial {}/{:X}, Status {:X})", payload, ser, ser, typ);
         if (sof != 0x2 && sof != 0x3 && sof != 0x4
             && sof != 0x7 && sof != 0x8 && sof != 0x9
@@ -278,10 +279,9 @@ void DigitalDecoder::handle_payload(uint64_t payload) {
     }
 
     // Rate-limit diagnostics publishing
-    static auto last_diag_time = std::chrono::steady_clock::now();
     const auto now = std::chrono::steady_clock::now();
-    if ((now - last_diag_time) > std::chrono::seconds(DIAG_PUBLISH_INTERVAL_SEC)) {
-        last_diag_time = now;
+    if ((now - last_diag_publish_time) > std::chrono::seconds(DIAG_PUBLISH_INTERVAL_SEC)) {
+        last_diag_publish_time = now;
         const auto diag_topic = std::format("{}diagnostics/error_rate", topic_prefix);
         const auto rate = std::format("{}/{}", error_count, packet_count);
         publish_or_warn(diag_topic, rate, 0, true);

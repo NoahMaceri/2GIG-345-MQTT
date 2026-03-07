@@ -9,12 +9,10 @@
 #include <string>
 #include <string_view>
 
-class DigitalDecoder
-{
-  public:
-    DigitalDecoder(Mqtt &mqtt_init, std::string topic_prefix)
-        : mqtt(mqtt_init), topic_prefix(std::move(topic_prefix))
-    {
+class DigitalDecoder {
+public:
+    DigitalDecoder(Mqtt& mqtt_init, std::string topic_prefix)
+        : mqtt(mqtt_init), topic_prefix(std::move(topic_prefix)) {
         // Normalize: ensure trailing slash
         if (!this->topic_prefix.empty() && this->topic_prefix.back() != '/') {
             this->topic_prefix += '/';
@@ -24,9 +22,9 @@ class DigitalDecoder
     void handle_data(char data);
     void set_rx_good(bool state);
 
-  private:
-    static bool is_payload_valid(uint64_t payload, uint64_t polynomial=0) ;
-    void publish_or_warn(std::string_view topic, std::string_view message, int qos=1, bool retain=true) const;
+private:
+    static bool is_payload_valid(uint64_t payload, uint64_t polynomial = 0);
+    void publish_or_warn(std::string_view topic, std::string_view message, int qos = 1, bool retain = true) const;
     void update_sensor_state(uint32_t serial, uint64_t payload);
     void update_keypad_state(uint32_t serial, uint64_t payload);
     void update_keyfob_state(uint32_t serial, uint64_t payload);
@@ -40,13 +38,12 @@ class DigitalDecoder
     bool rx_good = false;
     std::chrono::steady_clock::time_point last_rx_good_update_time{};
     std::chrono::steady_clock::time_point last_timeout_check_time{};
-    Mqtt &mqtt;
+    Mqtt& mqtt;
     std::string topic_prefix;
     uint32_t packet_count = 0;
     uint32_t error_count = 0;
 
-    struct SensorState
-    {
+    struct SensorState {
         std::chrono::steady_clock::time_point last_update_time{};
         bool has_lost_supervision = false;
 
@@ -57,8 +54,7 @@ class DigitalDecoder
         bool low_bat = false;
     };
 
-    struct KeypadState
-    {
+    struct KeypadState {
         std::chrono::steady_clock::time_point last_update_time{};
         bool has_lost_supervision = false;
 
@@ -70,10 +66,10 @@ class DigitalDecoder
 
     std::map<uint32_t, SensorState> sensor_status_map;
     std::map<uint32_t, KeypadState> keypad_status_map;
-    uint64_t last_keyfob_payload = 0;
+    std::map<uint32_t, uint64_t> last_keyfob_payloads;
+    std::chrono::steady_clock::time_point last_diag_publish_time{};
 
-    enum class ManchesterState
-    {
+    enum class ManchesterState {
         LOW_PHASE_A,
         LOW_PHASE_B,
         HIGH_PHASE_A,
