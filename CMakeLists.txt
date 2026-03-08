@@ -13,6 +13,8 @@ pkg_check_modules(RTL-SDR IMPORTED_TARGET librtlsdr REQUIRED)
 find_package(yaml-cpp REQUIRED)
 # spdlog
 find_package(spdlog REQUIRED)
+# OpenSSL (required by mosquittopp for TLS)
+find_package(OpenSSL REQUIRED)
 
 include_directories(${YAML_CPP_INCLUDE_DIRS})
 
@@ -26,7 +28,7 @@ add_executable(${PROJECT_NAME}
 	src/mqtt.h
 )
 
-target_link_libraries(${PROJECT_NAME} PkgConfig::Mosquitto PkgConfig::RTL-SDR ${YAML_CPP_LIBRARIES} spdlog::spdlog)
+target_link_libraries(${PROJECT_NAME} PkgConfig::Mosquitto PkgConfig::RTL-SDR ${YAML_CPP_LIBRARIES} spdlog::spdlog OpenSSL::SSL OpenSSL::Crypto)
 
 # Tests
 option(BUILD_TESTS "Build unit tests" OFF)

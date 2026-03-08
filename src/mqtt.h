@@ -29,12 +29,13 @@ public:
     /// @brief Constructs and connects an MQTT client.
     /// @param id        Client identifier for the broker.
     /// @param host      Broker hostname or IP address.
-    /// @param port      Broker port (typically 1883).
+    /// @param port      Broker port (typically 1883, or 8883 for TLS).
     /// @param username  Authentication username (empty string to skip).
     /// @param password  Authentication password (empty string to skip).
     /// @param will_topic  LWT topic published by the broker on unexpected disconnect.
     /// @param will_message LWT payload.
-    Mqtt(const char* id, const char* host, int port, const char* username, const char* password, const char* will_topic, const char* will_message);
+    /// @param ca_cert   Path to CA certificate file for TLS (empty string to skip).
+    Mqtt(const char* id, const char* host, int port, const char* username, const char* password, const char* will_topic, const char* will_message, const char* ca_cert = "");
     ~Mqtt() override;
 
     /// @brief Publishes a message to the broker.

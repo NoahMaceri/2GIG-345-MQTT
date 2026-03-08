@@ -3,6 +3,7 @@ mqtt:
   port: 1883
   username: user
   password: password
+  # ca_cert: /path/to/ca.crt
   topic_prefix: security/sensors345
 
 rtlsdr:

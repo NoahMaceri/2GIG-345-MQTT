@@ -73,6 +73,7 @@ int main(int argc, char** argv) {
     int mqtt_port = config["mqtt"]["port"].as<int>(1883);
     auto mqtt_username = config["mqtt"]["username"].as<std::string>("");
     auto mqtt_password = config["mqtt"]["password"].as<std::string>("");
+    auto mqtt_ca_cert = config["mqtt"]["ca_cert"].as<std::string>("");
     auto topic_prefix = config["mqtt"]["topic_prefix"].as<std::string>("security/sensors345");
 
     // RTL-SDR config
@@ -82,7 +83,7 @@ int main(int argc, char** argv) {
     int sample_rate = config["rtlsdr"]["sample_rate"].as<int>(1000000);
 
     auto lwt_topic = std::format("{}rx_status", topic_prefix.empty() || topic_prefix.back() == '/' ? topic_prefix : topic_prefix + "/");
-    auto mqtt = Mqtt("sensors345", mqtt_host.c_str(), mqtt_port, mqtt_username.c_str(), mqtt_password.c_str(), lwt_topic.c_str(), "FAILED");
+    auto mqtt = Mqtt("sensors345", mqtt_host.c_str(), mqtt_port, mqtt_username.c_str(), mqtt_password.c_str(), lwt_topic.c_str(), "FAILED", mqtt_ca_cert.c_str());
     auto decoder = DigitalDecoder(mqtt, topic_prefix);
     AnalogDecoder analog;
 

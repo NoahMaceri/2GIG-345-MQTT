@@ -4,7 +4,7 @@
 #include <spdlog/spdlog.h>
 #include <cstring>
 
-Mqtt::Mqtt(const char* id, const char* host, const int port, const char* username, const char* password, const char* will_topic, const char* will_message) : mosquittopp(id) {
+Mqtt::Mqtt(const char* id, const char* host, const int port, const char* username, const char* password, const char* will_topic, const char* will_message, const char* ca_cert) : mosquittopp(id) {
     int version = MQTT_PROTOCOL_V311;
     mosqpp::lib_init();
     this->keepalive = 30;
@@ -16,6 +16,15 @@ Mqtt::Mqtt(const char* id, const char* host, const int port, const char* usernam
     reinitialise(this->id.c_str(), true);
     // Set version to 3.1.1
     opts_set(MOSQ_OPT_PROTOCOL_VERSION, &version);
+    // Configure TLS if a CA certificate is provided
+    if (std::strlen(ca_cert) > 0) {
+        int rc = tls_set(ca_cert);
+        if (rc != MOSQ_ERR_SUCCESS) {
+            spdlog::error("Failed to configure TLS with CA cert: {} (rc={})", ca_cert, rc);
+        } else {
+            spdlog::info("TLS enabled with CA cert: {}", ca_cert);
+        }
+    }
     // Set username and password if non-null
     if (std::strlen(username) > 0 && std::strlen(password) > 0) {
         spdlog::info("Using credentials: {}", username);
